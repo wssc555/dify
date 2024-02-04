@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import cn from 'classnames'
 import { useContext } from 'use-context-selector'
 import produce from 'immer'
+import { useFormattingChangedDispatcher } from '../../../debug/hooks'
 import ChooseTool from './choose-tool'
 import SettingBuiltInTool from './setting-built-in-tool'
 import Panel from '@/app/components/app/configuration/base/feature-panel'
@@ -27,6 +28,7 @@ const AgentTools: FC = () => {
   const { t } = useTranslation()
   const [isShowChooseTool, setIsShowChooseTool] = useState(false)
   const { modelConfig, setModelConfig, collectionList } = useContext(ConfigContext)
+  const formattingChangedDispatcher = useFormattingChangedDispatcher()
 
   const [currentTool, setCurrentTool] = useState<AgentToolWithMoreInfo>(null)
   const [selectedProviderId, setSelectedProviderId] = useState<string | undefined>(undefined)
@@ -49,6 +51,7 @@ const AgentTools: FC = () => {
     })
     setModelConfig(newModelConfig)
     setIsShowSettingTool(false)
+    formattingChangedDispatcher()
   }
 
   return (
@@ -84,15 +87,12 @@ const AgentTools: FC = () => {
           </div>
         }
       >
-        <div className='flex items-center flex-wrap justify-between'>
+        <div className='grid gap-1 grid-cols-1 2xl:grid-cols-2 items-center flex-wrap justify-between'>
           {tools.map((item: AgentTool & { icon: any; collection?: Collection }, index) => (
             <div key={index}
               className={cn((item.isDeleted || item.notAuthor) ? 'bg-white/50' : 'bg-white', (item.enabled && !item.isDeleted && !item.notAuthor) && 'shadow-xs', index > 1 && 'mt-1', 'group relative flex justify-between items-center last-of-type:mb-0  pl-2.5 py-2 pr-3 w-full  rounded-lg border-[0.5px] border-gray-200 ')}
-              style={{
-                width: 'calc(50% - 2px)',
-              }}
             >
-              <div className='flex items-center'>
+              <div className='grow w-0 flex items-center'>
                 {(item.isDeleted || item.notAuthor)
                   ? (
                     <DefaultToolIcon className='w-6 h-6' />
@@ -117,12 +117,12 @@ const AgentTools: FC = () => {
                       ))}
                 <div
                   title={item.tool_name}
-                  className={cn((item.isDeleted || item.notAuthor) ? 'line-through opacity-50' : 'group-hover:max-w-[70px]', 'ml-2 max-w-[200px]  leading-[18px] text-[13px] font-medium text-gray-800  truncate')}
+                  className={cn((item.isDeleted || item.notAuthor) ? 'line-through opacity-50' : '', 'grow w-0 ml-2 leading-[18px] text-[13px] font-medium text-gray-800  truncate')}
                 >
                   {item.tool_label || item.tool_name}
                 </div>
               </div>
-              <div className='flex items-center'>
+              <div className='shrink-0 ml-1 flex items-center'>
                 {(item.isDeleted || item.notAuthor)
                   ? (
                     <div className='flex items-center'>
@@ -144,6 +144,7 @@ const AgentTools: FC = () => {
                           draft.agentConfig.tools.splice(index, 1)
                         })
                         setModelConfig(newModelConfig)
+                        formattingChangedDispatcher()
                       }}>
                         <Trash03 className='w-4 h-4 text-gray-500' />
                       </div>
@@ -170,6 +171,7 @@ const AgentTools: FC = () => {
                           draft.agentConfig.tools.splice(index, 1)
                         })
                         setModelConfig(newModelConfig)
+                        formattingChangedDispatcher()
                       }}>
                         <Trash03 className='w-4 h-4 text-gray-500' />
                       </div>
@@ -186,6 +188,7 @@ const AgentTools: FC = () => {
                         (draft.agentConfig.tools[index] as any).enabled = enabled
                       })
                       setModelConfig(newModelConfig)
+                      formattingChangedDispatcher()
                     }} />
                 </div>
               </div>

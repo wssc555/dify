@@ -13,7 +13,7 @@ from core.docstore.dataset_docstore import DatasetDocumentStore
 from core.errors.error import ProviderTokenNotInitError
 from core.generator.llm_generator import LLMGenerator
 from core.index.index import IndexBuilder
-from core.model_manager import ModelManager, ModelInstance
+from core.model_manager import ModelInstance, ModelManager
 from core.model_runtime.entities.model_entities import ModelType, PriceType
 from core.model_runtime.model_providers.__base.large_language_model import LargeLanguageModel
 from core.model_runtime.model_providers.__base.text_embedding_model import TextEmbeddingModel
@@ -562,7 +562,7 @@ class IndexingRunner:
 
             character_splitter = FixedRecursiveCharacterTextSplitter.from_encoder(
                 chunk_size=segmentation["max_tokens"],
-                chunk_overlap=0,
+                chunk_overlap=segmentation.get('chunk_overlap', 0),
                 fixed_separator=separator,
                 separators=["\n\n", "。", ".", " ", ""],
                 embedding_model_instance=embedding_model_instance
@@ -571,7 +571,7 @@ class IndexingRunner:
             # Automatic segmentation
             character_splitter = EnhanceRecursiveCharacterTextSplitter.from_encoder(
                 chunk_size=DatasetProcessRule.AUTOMATIC_RULES['segmentation']['max_tokens'],
-                chunk_overlap=0,
+                chunk_overlap=DatasetProcessRule.AUTOMATIC_RULES['segmentation']['chunk_overlap'],
                 separators=["\n\n", "。", ".", " ", ""],
                 embedding_model_instance=embedding_model_instance
             )
