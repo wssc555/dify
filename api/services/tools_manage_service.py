@@ -1,22 +1,28 @@
 import json
-from typing import List, Tuple
+
+from flask import current_app
+from httpx import get
 
 from core.tools.entities.common_entities import I18nObject
 from core.tools.entities.tool_bundle import ApiBasedToolBundle
-from core.tools.entities.tool_entities import (ApiProviderAuthType, ApiProviderSchemaType, ToolCredentialsOption,
-                                               ToolProviderCredentials)
+from core.tools.entities.tool_entities import (
+    ApiProviderAuthType,
+    ApiProviderSchemaType,
+    ToolCredentialsOption,
+    ToolParameter,
+    ToolProviderCredentials,
+)
 from core.tools.entities.user_entities import UserTool, UserToolProvider
 from core.tools.errors import ToolNotFoundError, ToolProviderCredentialValidationError, ToolProviderNotFoundError
 from core.tools.provider.api_tool_provider import ApiBasedToolProviderController
 from core.tools.provider.tool_provider import ToolProviderController
 from core.tools.tool_manager import ToolManager
-from core.tools.utils.configuration import ToolConfiguration
+from core.tools.utils.configuration import ToolConfigurationManager
 from core.tools.utils.encoder import serialize_base_model_array, serialize_base_model_dict
 from core.tools.utils.parser import ApiBasedToolSchemaParser
 from extensions.ext_database import db
-from flask import current_app
-from httpx import get
 from models.tools import ApiToolProvider, BuiltinToolProvider
+from services.model_provider_service import ModelProviderService
 
 
 class ToolManageService:
@@ -45,11 +51,13 @@ class ToolManageService:
             :param provider: the provider dict
         """
         url_prefix = (current_app.config.get("CONSOLE_API_URL")
-                      + f"/console/api/workspaces/current/tool-provider/builtin/")
+                      + "/console/api/workspaces/current/tool-provider/")
         
         if 'icon' in provider:
             if provider['type'] == UserToolProvider.ProviderType.BUILTIN.value:
-                provider['icon'] = url_prefix + provider['name'] + '/icon'
+                provider['icon'] = url_prefix + 'builtin/' + provider['name'] + '/icon'
+            elif provider['type'] == UserToolProvider.ProviderType.MODEL.value:
+                provider['icon'] = url_prefix + 'model/' + provider['name'] + '/icon'
             elif provider['type'] == UserToolProvider.ProviderType.API.value:
                 try:
                     provider['icon'] = json.loads(provider['icon'])
@@ -69,15 +77,52 @@ class ToolManageService:
         provider_controller: ToolProviderController = ToolManager.get_builtin_provider(provider)
         tools = provider_controller.get_tools()
 
-        result = [
-            UserTool(
+        tool_provider_configurations = ToolConfigurationManager(tenant_id=tenant_id, provider_controller=provider_controller)
+        # check if user has added the provider
+        builtin_provider: BuiltinToolProvider = db.session.query(BuiltinToolProvider).filter(
+            BuiltinToolProvider.tenant_id == tenant_id,
+            BuiltinToolProvider.provider == provider,
+        ).first()
+
+        credentials = {}
+        if builtin_provider is not None:
+            # get credentials
+            credentials = builtin_provider.credentials
+            credentials = tool_provider_configurations.decrypt_tool_credentials(credentials)
+
+        result = []
+        for tool in tools:
+            # fork tool runtime
+            tool = tool.fork_tool_runtime(meta={
+                'credentials': credentials,
+                'tenant_id': tenant_id,
+            })
+
+            # get tool parameters
+            parameters = tool.parameters or []
+            # get tool runtime parameters
+            runtime_parameters = tool.get_runtime_parameters()
+            # override parameters
+            current_parameters = parameters.copy()
+            for runtime_parameter in runtime_parameters:
+                found = False
+                for index, parameter in enumerate(current_parameters):
+                    if parameter.name == runtime_parameter.name and parameter.form == runtime_parameter.form:
+                        current_parameters[index] = runtime_parameter
+                        found = True
+                        break
+
+                if not found and runtime_parameter.form == ToolParameter.ToolParameterForm.FORM:
+                    current_parameters.append(runtime_parameter)
+
+            user_tool = UserTool(
                 author=tool.identity.author,
                 name=tool.identity.name,
                 label=tool.identity.label,
                 description=tool.description.human,
-                parameters=tool.parameters or []
-            ) for tool in tools
-        ]
+                parameters=current_parameters
+            )
+            result.append(user_tool)
 
         return json.loads(
             serialize_base_model_array(result)
@@ -98,7 +143,7 @@ class ToolManageService:
         ]
 
     @staticmethod
-    def parser_api_schema(schema: str) -> List[ApiBasedToolBundle]:
+    def parser_api_schema(schema: str) -> list[ApiBasedToolBundle]:
         """
             parse api schema to tool bundle
         """
@@ -168,7 +213,7 @@ class ToolManageService:
             raise ValueError(f'invalid schema: {str(e)}')
 
     @staticmethod
-    def convert_schema_to_tool_bundles(schema: str, extra_info: dict = None) -> List[ApiBasedToolBundle]:
+    def convert_schema_to_tool_bundles(schema: str, extra_info: dict = None) -> list[ApiBasedToolBundle]:
         """
             convert schema to tool bundles
 
@@ -205,8 +250,8 @@ class ToolManageService:
         # extra info like description will be set here
         tool_bundles, schema_type = ToolManageService.convert_schema_to_tool_bundles(schema, extra_info)
         
-        if len(tool_bundles) > 10:
-            raise ValueError(f'the number of apis should be less than 10')
+        if len(tool_bundles) > 100:
+            raise ValueError('the number of apis should be less than 100')
 
         # create db provider
         db_provider = ApiToolProvider(
@@ -234,7 +279,7 @@ class ToolManageService:
         provider_controller.load_bundled_tools(tool_bundles)
 
         # encrypt credentials
-        tool_configuration = ToolConfiguration(tenant_id=tenant_id, provider_controller=provider_controller)
+        tool_configuration = ToolConfigurationManager(tenant_id=tenant_id, provider_controller=provider_controller)
         encrypted_credentials = tool_configuration.encrypt_tool_credentials(credentials)
         db_provider.credentials_str = json.dumps(encrypted_credentials)
 
@@ -264,7 +309,7 @@ class ToolManageService:
             # try to parse schema, avoid SSRF attack
             ToolManageService.parser_api_schema(schema)
         except Exception as e:
-            raise ValueError(f'invalid schema, please check the url you provided')
+            raise ValueError('invalid schema, please check the url you provided')
         
         return {
             'schema': schema
@@ -321,7 +366,7 @@ class ToolManageService:
             provider_controller = ToolManager.get_builtin_provider(provider_name)
             if not provider_controller.need_credentials:
                 raise ValueError(f'provider {provider_name} does not need credentials')
-            tool_configuration = ToolConfiguration(tenant_id=tenant_id, provider_controller=provider_controller)
+            tool_configuration = ToolConfigurationManager(tenant_id=tenant_id, provider_controller=provider_controller)
             # get original credentials if exists
             if provider is not None:
                 original_credentials = tool_configuration.decrypt_tool_credentials(provider.credentials)
@@ -351,9 +396,11 @@ class ToolManageService:
 
         else:
             provider.encrypted_credentials = json.dumps(credentials)
-
             db.session.add(provider)
             db.session.commit()
+
+            # delete cache
+            tool_configuration.delete_tool_credentials_cache()
 
         return { 'result': 'success' }
     
@@ -389,7 +436,6 @@ class ToolManageService:
         provider.description = extra_info.get('description', '')
         provider.schema_type_str = ApiProviderSchemaType.OPENAPI.value
         provider.tools_str = serialize_base_model_array(tool_bundles)
-        provider.credentials_str = json.dumps(credentials)
         provider.privacy_policy = privacy_policy
 
         if 'auth_type' not in credentials:
@@ -399,32 +445,53 @@ class ToolManageService:
         auth_type = ApiProviderAuthType.value_of(credentials['auth_type'])
 
         # create provider entity
-        provider_entity = ApiBasedToolProviderController.from_db(provider, auth_type)
+        provider_controller = ApiBasedToolProviderController.from_db(provider, auth_type)
         # load tools into provider entity
-        provider_entity.load_bundled_tools(tool_bundles)
+        provider_controller.load_bundled_tools(tool_bundles)
+
+        # get original credentials if exists
+        tool_configuration = ToolConfigurationManager(tenant_id=tenant_id, provider_controller=provider_controller)
+
+        original_credentials = tool_configuration.decrypt_tool_credentials(provider.credentials)
+        masked_credentials = tool_configuration.mask_tool_credentials(original_credentials)
+        # check if the credential has changed, save the original credential
+        for name, value in credentials.items():
+            if name in masked_credentials and value == masked_credentials[name]:
+                credentials[name] = original_credentials[name]
+
+        credentials = tool_configuration.encrypt_tool_credentials(credentials)
+        provider.credentials_str = json.dumps(credentials)
 
         db.session.add(provider)
         db.session.commit()
+
+        # delete cache
+        tool_configuration.delete_tool_credentials_cache()
 
         return { 'result': 'success' }
     
     @staticmethod
     def delete_builtin_tool_provider(
-        user_id: str, tenant_id: str, provider: str
+        user_id: str, tenant_id: str, provider_name: str
     ):
         """
             delete tool provider
         """
         provider: BuiltinToolProvider = db.session.query(BuiltinToolProvider).filter(
             BuiltinToolProvider.tenant_id == tenant_id,
-            BuiltinToolProvider.provider == provider,
+            BuiltinToolProvider.provider == provider_name,
         ).first()
 
         if provider is None:
-            raise ValueError(f'you have not added provider {provider}')
+            raise ValueError(f'you have not added provider {provider_name}')
         
         db.session.delete(provider)
         db.session.commit()
+
+        # delete cache
+        provider_controller = ToolManager.get_builtin_provider(provider_name)
+        tool_configuration = ToolConfigurationManager(tenant_id=tenant_id, provider_controller=provider_controller)
+        tool_configuration.delete_tool_credentials_cache()
 
         return { 'result': 'success' }
     
@@ -433,7 +500,7 @@ class ToolManageService:
         provider: str
     ):
         """
-            get tool provider icon and it's minetype
+            get tool provider icon and it's mimetype
         """
         icon_path, mime_type = ToolManager.get_builtin_provider_icon(provider)
         with open(icon_path, 'rb') as f:
@@ -442,19 +509,59 @@ class ToolManageService:
         return icon_bytes, mime_type
     
     @staticmethod
-    def delete_api_tool_provider(
+    def get_model_tool_provider_icon(
+        provider: str
+    ):
+        """
+            get tool provider icon and it's mimetype
+        """
+        
+        service = ModelProviderService()
+        icon_bytes, mime_type = service.get_model_provider_icon(provider=provider, icon_type='icon_small', lang='en_US')
+
+        if icon_bytes is None:
+            raise ValueError(f'provider {provider} does not exists')
+
+        return icon_bytes, mime_type
+    
+    @staticmethod
+    def list_model_tool_provider_tools(
         user_id: str, tenant_id: str, provider: str
+    ):
+        """
+            list model tool provider tools
+        """
+        provider_controller = ToolManager.get_model_provider(tenant_id=tenant_id, provider_name=provider)
+        tools = provider_controller.get_tools(user_id=user_id, tenant_id=tenant_id)
+
+        result = [
+            UserTool(
+                author=tool.identity.author,
+                name=tool.identity.name,
+                label=tool.identity.label,
+                description=tool.description.human,
+                parameters=tool.parameters or []
+            ) for tool in tools
+        ]
+
+        return json.loads(
+            serialize_base_model_array(result)
+        )
+    
+    @staticmethod
+    def delete_api_tool_provider(
+        user_id: str, tenant_id: str, provider_name: str
     ):
         """
             delete tool provider
         """
         provider: ApiToolProvider = db.session.query(ApiToolProvider).filter(
             ApiToolProvider.tenant_id == tenant_id,
-            ApiToolProvider.name == provider,
+            ApiToolProvider.name == provider_name,
         ).first()
 
         if provider is None:
-            raise ValueError(f'you have not added provider {provider}')
+            raise ValueError(f'you have not added provider {provider_name}')
         
         db.session.delete(provider)
         db.session.commit()
@@ -472,12 +579,16 @@ class ToolManageService:
     
     @staticmethod
     def test_api_tool_preview(
-        tenant_id: str, tool_name: str, credentials: dict, parameters: dict, schema_type: str, schema: str
+        tenant_id: str, 
+        provider_name: str,
+        tool_name: str, 
+        credentials: dict, 
+        parameters: dict, 
+        schema_type: str, 
+        schema: str
     ):
         """
             test api tool before adding api tool provider
-
-            1. parse schema into tool bundle
         """
         if schema_type not in [member.value for member in ApiProviderSchemaType]:
             raise ValueError(f'invalid schema type {schema_type}')
@@ -485,22 +596,28 @@ class ToolManageService:
         try:
             tool_bundles, _ = ApiBasedToolSchemaParser.auto_parse_to_tool_bundle(schema)
         except Exception as e:
-            raise ValueError(f'invalid schema')
+            raise ValueError('invalid schema')
         
         # get tool bundle
         tool_bundle = next(filter(lambda tb: tb.operation_id == tool_name, tool_bundles), None)
         if tool_bundle is None:
             raise ValueError(f'invalid tool name {tool_name}')
         
-        # create a fake db provider
-        db_provider = ApiToolProvider(
-            tenant_id='', user_id='', name='', icon='',
-            schema=schema,
-            description='',
-            schema_type_str=ApiProviderSchemaType.OPENAPI.value,
-            tools_str=serialize_base_model_array(tool_bundles),
-            credentials_str=json.dumps(credentials),
-        )
+        db_provider: ApiToolProvider = db.session.query(ApiToolProvider).filter(
+            ApiToolProvider.tenant_id == tenant_id,
+            ApiToolProvider.name == provider_name,
+        ).first()
+
+        if not db_provider:
+            # create a fake db provider
+            db_provider = ApiToolProvider(
+                tenant_id='', user_id='', name='', icon='',
+                schema=schema,
+                description='',
+                schema_type_str=ApiProviderSchemaType.OPENAPI.value,
+                tools_str=serialize_base_model_array(tool_bundles),
+                credentials_str=json.dumps(credentials),
+            )
 
         if 'auth_type' not in credentials:
             raise ValueError('auth_type is required')
@@ -512,6 +629,19 @@ class ToolManageService:
         provider_controller = ApiBasedToolProviderController.from_db(db_provider, auth_type)
         # load tools into provider entity
         provider_controller.load_bundled_tools(tool_bundles)
+
+        # decrypt credentials
+        if db_provider.id:
+            tool_configuration = ToolConfigurationManager(
+                tenant_id=tenant_id, 
+                provider_controller=provider_controller
+            )
+            decrypted_credentials = tool_configuration.decrypt_tool_credentials(credentials)
+            # check if the credential has changed, save the original credential
+            masked_credentials = tool_configuration.mask_tool_credentials(decrypted_credentials)
+            for name, value in credentials.items():
+                if name in masked_credentials and value == masked_credentials[name]:
+                    credentials[name] = decrypted_credentials[name]
 
         try:
             provider_controller.validate_credentials_format(credentials)

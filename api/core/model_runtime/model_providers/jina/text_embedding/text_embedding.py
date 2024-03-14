@@ -2,14 +2,21 @@ import time
 from json import JSONDecodeError, dumps
 from typing import Optional
 
+from requests import post
+
 from core.model_runtime.entities.model_entities import PriceType
 from core.model_runtime.entities.text_embedding_entities import EmbeddingUsage, TextEmbeddingResult
-from core.model_runtime.errors.invoke import (InvokeAuthorizationError, InvokeBadRequestError, InvokeConnectionError,
-                                              InvokeError, InvokeRateLimitError, InvokeServerUnavailableError)
+from core.model_runtime.errors.invoke import (
+    InvokeAuthorizationError,
+    InvokeBadRequestError,
+    InvokeConnectionError,
+    InvokeError,
+    InvokeRateLimitError,
+    InvokeServerUnavailableError,
+)
 from core.model_runtime.errors.validate import CredentialsValidateFailedError
 from core.model_runtime.model_providers.__base.text_embedding_model import TextEmbeddingModel
 from core.model_runtime.model_providers.jina.text_embedding.jina_tokenizer import JinaTokenizer
-from requests import post
 
 
 class JinaTextEmbeddingModel(TextEmbeddingModel):
@@ -50,7 +57,7 @@ class JinaTextEmbeddingModel(TextEmbeddingModel):
         try:
             response = post(url, headers=headers, data=dumps(data))
         except Exception as e:
-            raise InvokeConnectionError(e)
+            raise InvokeConnectionError(str(e))
         
         if response.status_code != 200:
             try:

@@ -1,8 +1,13 @@
-import type { FC } from 'react'
+import type {
+  FC,
+  ReactNode,
+} from 'react'
+import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { ChatItem } from '../../types'
-import { useChatContext } from '../context'
-import { useCurrentAnswerIsResponsing } from '../hooks'
+import type {
+  ChatConfig,
+  ChatItem,
+} from '../../types'
 import Operation from './operation'
 import AgentContent from './agent-content'
 import BasicContent from './basic-content'
@@ -12,23 +17,27 @@ import { AnswerTriangle } from '@/app/components/base/icons/src/vender/solid/gen
 import LoadingAnim from '@/app/components/app/chat/loading-anim'
 import Citation from '@/app/components/app/chat/citation'
 import { EditTitle } from '@/app/components/app/annotation/edit-annotation-modal/edit-item'
+import type { Emoji } from '@/app/components/tools/types'
 
 type AnswerProps = {
   item: ChatItem
   question: string
   index: number
+  config?: ChatConfig
+  answerIcon?: ReactNode
+  responding?: boolean
+  allToolIcons?: Record<string, string | Emoji>
 }
 const Answer: FC<AnswerProps> = ({
   item,
   question,
   index,
+  config,
+  answerIcon,
+  responding,
+  allToolIcons,
 }) => {
   const { t } = useTranslation()
-  const {
-    config,
-    answerIcon,
-  } = useChatContext()
-  const responsing = useCurrentAnswerIsResponsing(item.id)
   const {
     content,
     citation,
@@ -49,7 +58,7 @@ const Answer: FC<AnswerProps> = ({
           )
         }
         {
-          responsing && (
+          responding && (
             <div className='absolute -top-[3px] -left-[3px] pl-[6px] flex items-center w-4 h-4 bg-white rounded-full shadow-xs border-[0.5px] border-gray-50'>
               <LoadingAnim type='avatar' />
             </div>
@@ -61,7 +70,7 @@ const Answer: FC<AnswerProps> = ({
           <AnswerTriangle className='absolute -left-2 top-0 w-2 h-3 text-gray-100' />
           <div className='group relative inline-block px-4 py-3 max-w-full bg-gray-100 rounded-b-2xl rounded-tr-2xl text-sm text-gray-900'>
             {
-              !responsing && (
+              !responding && (
                 <Operation
                   item={item}
                   question={question}
@@ -70,7 +79,7 @@ const Answer: FC<AnswerProps> = ({
               )
             }
             {
-              responsing && !content && !hasAgentThoughts && (
+              responding && !content && !hasAgentThoughts && (
                 <div className='flex items-center justify-center w-6 h-5'>
                   <LoadingAnim type='text' />
                 </div>
@@ -83,7 +92,11 @@ const Answer: FC<AnswerProps> = ({
             }
             {
               hasAgentThoughts && (
-                <AgentContent item={item} />
+                <AgentContent
+                  item={item}
+                  responding={responding}
+                  allToolIcons={allToolIcons}
+                />
               )
             }
             {
@@ -96,7 +109,7 @@ const Answer: FC<AnswerProps> = ({
             }
             <SuggestedQuestions item={item} />
             {
-              !!citation?.length && config?.retriever_resource?.enabled && !responsing && (
+              !!citation?.length && config?.retriever_resource?.enabled && !responding && (
                 <Citation data={citation} showHitInfo={config.supportCitationHitInfo} />
               )
             }
@@ -108,4 +121,4 @@ const Answer: FC<AnswerProps> = ({
   )
 }
 
-export default Answer
+export default memo(Answer)

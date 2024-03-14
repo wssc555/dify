@@ -1,14 +1,15 @@
 import json
 import uuid
 
+from flask import current_app, request
+from flask_login import UserMixin
+from sqlalchemy import Float, text
+from sqlalchemy.dialects.postgresql import UUID
+
 from core.file.tool_file_parser import ToolFileParser
 from core.file.upload_file_parser import UploadFileParser
 from extensions.ext_database import db
-from flask import current_app, request
-from flask_login import UserMixin
 from libs.helper import generate_string
-from sqlalchemy import Float, text
-from sqlalchemy.dialects.postgresql import UUID
 
 from .account import Account, Tenant
 
@@ -724,6 +725,7 @@ class MessageFile(db.Model):
     created_by_role = db.Column(db.String(255), nullable=False)
     created_by = db.Column(UUID, nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, server_default=db.text('CURRENT_TIMESTAMP(0)'))
+
 
 class MessageAnnotation(db.Model):
     __tablename__ = 'message_annotations'

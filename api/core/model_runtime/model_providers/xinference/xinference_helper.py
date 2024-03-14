@@ -1,23 +1,21 @@
-from os import path
 from threading import Lock
 from time import time
-from typing import List
 
-from requests import get
 from requests.adapters import HTTPAdapter
 from requests.exceptions import ConnectionError, MissingSchema, Timeout
 from requests.sessions import Session
+from yarl import URL
 
 
-class XinferenceModelExtraParameter(object):
+class XinferenceModelExtraParameter:
     model_format: str
     model_handle_type: str
-    model_ability: List[str]
+    model_ability: list[str]
     max_tokens: int = 512
     context_length: int = 2048
     support_function_call: bool = False
 
-    def __init__(self, model_format: str, model_handle_type: str, model_ability: List[str], 
+    def __init__(self, model_format: str, model_handle_type: str, model_ability: list[str], 
                  support_function_call: bool, max_tokens: int, context_length: int) -> None:
         self.model_format = model_format
         self.model_handle_type = model_handle_type
@@ -57,7 +55,10 @@ class XinferenceHelper:
             get xinference model extra parameter like model_format and model_handle_type
         """
 
-        url = path.join(server_url, 'v1/models', model_uid)
+        if not model_uid or not model_uid.strip() or not server_url or not server_url.strip():
+            raise RuntimeError('model_uid is empty')
+
+        url = str(URL(server_url) / 'v1' / 'models' / model_uid)
 
         # this method is surrounded by a lock, and default requests may hang forever, so we just set a Adapter with max_retries=3
         session = Session()
@@ -68,7 +69,6 @@ class XinferenceHelper:
             response = session.get(url, timeout=10)
         except (MissingSchema, ConnectionError, Timeout) as e:
             raise RuntimeError(f'get xinference model extra parameter failed, url: {url}, error: {e}')
-
         if response.status_code != 200:
             raise RuntimeError(f'get xinference model extra parameter failed, status code: {response.status_code}, response: {response.text}')
         

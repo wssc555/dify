@@ -1,16 +1,16 @@
-# -*- coding:utf-8 -*-
 import json
 
-from controllers.service_api import api
-from controllers.service_api.wraps import AppApiResource
-from extensions.ext_database import db
 from flask import current_app
-from flask_restful import fields, marshal_with
+from flask_restful import fields, marshal_with, Resource
+
+from controllers.service_api import api
+from controllers.service_api.wraps import validate_app_token
+from extensions.ext_database import db
 from models.model import App, AppModelConfig
 from models.tools import ApiToolProvider
 
 
-class AppParameterApi(AppApiResource):
+class AppParameterApi(Resource):
     """Resource for app variables."""
 
     variable_fields = {
@@ -42,8 +42,9 @@ class AppParameterApi(AppApiResource):
         'system_parameters': fields.Nested(system_parameters_fields)
     }
 
+    @validate_app_token
     @marshal_with(parameters_fields)
-    def get(self, app_model: App, end_user):
+    def get(self, app_model: App):
         """Retrieve app parameters."""
         app_model_config = app_model.app_model_config
 
@@ -64,8 +65,9 @@ class AppParameterApi(AppApiResource):
             }
         }
 
-class AppMetaApi(AppApiResource):
-    def get(self, app_model: App, end_user):
+class AppMetaApi(Resource):
+    @validate_app_token
+    def get(self, app_model: App):
         """Get app meta"""
         app_model_config: AppModelConfig = app_model.app_model_config
 
@@ -77,7 +79,7 @@ class AppMetaApi(AppApiResource):
         # get all tools
         tools = agent_config.get('tools', [])
         url_prefix = (current_app.config.get("CONSOLE_API_URL")
-                  + f"/console/api/workspaces/current/tool-provider/builtin/")
+                  + "/console/api/workspaces/current/tool-provider/builtin/")
         for tool in tools:
             keys = list(tool.keys())
             if len(keys) >= 4:

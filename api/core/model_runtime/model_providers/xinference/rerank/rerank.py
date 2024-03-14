@@ -1,13 +1,20 @@
 from typing import Optional
 
+from xinference_client.client.restful.restful_client import Client, RESTfulRerankModelHandle
+
 from core.model_runtime.entities.common_entities import I18nObject
 from core.model_runtime.entities.model_entities import AIModelEntity, FetchFrom, ModelType
 from core.model_runtime.entities.rerank_entities import RerankDocument, RerankResult
-from core.model_runtime.errors.invoke import (InvokeAuthorizationError, InvokeBadRequestError, InvokeConnectionError,
-                                              InvokeError, InvokeRateLimitError, InvokeServerUnavailableError)
+from core.model_runtime.errors.invoke import (
+    InvokeAuthorizationError,
+    InvokeBadRequestError,
+    InvokeConnectionError,
+    InvokeError,
+    InvokeRateLimitError,
+    InvokeServerUnavailableError,
+)
 from core.model_runtime.errors.validate import CredentialsValidateFailedError
 from core.model_runtime.model_providers.__base.rerank_model import RerankModel
-from xinference_client.client.restful.restful_client import Client, RESTfulRerankModelHandle
 
 
 class XinferenceRerankModel(RerankModel):
@@ -36,6 +43,9 @@ class XinferenceRerankModel(RerankModel):
                 model=model,
                 docs=[]
             )
+
+        if credentials['server_url'].endswith('/'):
+            credentials['server_url'] = credentials['server_url'][:-1]
 
         # initialize client
         client = Client(
@@ -85,6 +95,9 @@ class XinferenceRerankModel(RerankModel):
         :return:
         """
         try:
+            if "/" in credentials['model_uid'] or "?" in credentials['model_uid'] or "#" in credentials['model_uid']:
+                raise CredentialsValidateFailedError("model_uid should not contain /, ?, or #")
+            
             self.invoke(
                 model=model,
                 credentials=credentials,
