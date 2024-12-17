@@ -9,13 +9,20 @@ class TavilyProvider(BuiltinToolProviderController):
     def _validate_credentials(self, credentials: dict[str, Any]) -> None:
         try:
             TavilySearchTool().fork_tool_runtime(
-                meta={
+                runtime={
                     "credentials": credentials,
                 }
             ).invoke(
-                user_id='',
+                user_id="",
                 tool_parameters={
                     "query": "Sachin Tendulkar",
+                    "search_depth": "basic",
+                    "include_answer": True,
+                    "include_images": False,
+                    "include_raw_content": False,
+                    "max_results": 5,
+                    "include_domains": "",
+                    "exclude_domains": "",
                 },
             )
         except Exception as e:

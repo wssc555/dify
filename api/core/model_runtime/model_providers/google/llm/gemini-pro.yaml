@@ -4,6 +4,8 @@ label:
 model_type: llm
 features:
   - agent-thought
+  - tool-call
+  - stream-tool-call
 model_properties:
   mode: chat
   context_size: 30720
@@ -34,3 +36,4 @@ pricing:
   output: '0.00'
   unit: '0.000001'
   currency: USD
+deprecated: true

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ModelParameterRule } from '../declarations'
 import { useLanguage } from '../hooks'
 import { isNullOrUndefined } from '../utils'
-import { HelpCircle } from '@/app/components/base/icons/src/vender/line/general'
+import cn from '@/utils/classnames'
 import Switch from '@/app/components/base/switch'
 import Tooltip from '@/app/components/base/tooltip'
 import Slider from '@/app/components/base/slider'
@@ -19,6 +19,7 @@ type ParameterItemProps = {
   onChange?: (value: ParameterValue) => void
   className?: string
   onSwitch?: (checked: boolean, assignValue: ParameterValue) => void
+  isInWorkflow?: boolean
 }
 const ParameterItem: FC<ParameterItemProps> = ({
   parameterRule,
@@ -26,6 +27,7 @@ const ParameterItem: FC<ParameterItemProps> = ({
   onChange,
   className,
   onSwitch,
+  isInWorkflow,
 }) => {
   const language = useLanguage()
   const [localValue, setLocalValue] = useState(value)
@@ -36,7 +38,7 @@ const ParameterItem: FC<ParameterItemProps> = ({
 
     if (parameterRule.type === 'int' || parameterRule.type === 'float')
       defaultValue = isNullOrUndefined(parameterRule.default) ? (parameterRule.min || 0) : parameterRule.default
-    else if (parameterRule.type === 'string')
+    else if (parameterRule.type === 'string' || parameterRule.type === 'text')
       defaultValue = parameterRule.options?.length ? (parameterRule.default || '') : (parameterRule.default || '')
     else if (parameterRule.type === 'boolean')
       defaultValue = !isNullOrUndefined(parameterRule.default) ? parameterRule.default : false
@@ -51,7 +53,7 @@ const ParameterItem: FC<ParameterItemProps> = ({
   const handleInputChange = (newValue: ParameterValue) => {
     setLocalValue(newValue)
 
-    if (onChange && (parameterRule.name === 'stop' || !isNullOrUndefined(value)))
+    if (onChange && (parameterRule.name === 'stop' || !isNullOrUndefined(value) || parameterRule.required))
       onChange(newValue)
   }
 
@@ -95,7 +97,7 @@ const ParameterItem: FC<ParameterItemProps> = ({
     handleInputChange(v === 1)
   }
 
-  const handleStringInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleStringInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     handleInputChange(e.target.value)
   }
 
@@ -122,15 +124,13 @@ const ParameterItem: FC<ParameterItemProps> = ({
 
   const renderInput = () => {
     const numberInputWithSlide = (parameterRule.type === 'int' || parameterRule.type === 'float')
-    && !isNullOrUndefined(parameterRule.min)
-    && !isNullOrUndefined(parameterRule.max)
+      && !isNullOrUndefined(parameterRule.min)
+      && !isNullOrUndefined(parameterRule.max)
 
-    if (parameterRule.type === 'int' || parameterRule.type === 'float') {
+    if (parameterRule.type === 'int') {
       let step = 100
       if (parameterRule.max) {
-        if (parameterRule.max < 10)
-          step = 0.1
-        else if (parameterRule.max < 100)
+        if (parameterRule.max < 100)
           step = 1
         else if (parameterRule.max < 1000)
           step = 10
@@ -162,6 +162,31 @@ const ParameterItem: FC<ParameterItemProps> = ({
       )
     }
 
+    if (parameterRule.type === 'float') {
+      return (
+        <>
+          {numberInputWithSlide && <Slider
+            className='w-[120px]'
+            value={renderValue as number}
+            min={parameterRule.min}
+            max={parameterRule.max}
+            step={0.1}
+            onChange={handleSlideChange}
+          />}
+          <input
+            ref={numberInputRef}
+            className='shrink-0 block ml-4 pl-3 w-16 h-8 appearance-none outline-none rounded-lg bg-gray-100 text-[13px] text-gra-900'
+            type='number'
+            max={parameterRule.max}
+            min={parameterRule.min}
+            step={numberInputWithSlide ? 0.1 : +`0.${parameterRule.precision || 0}`}
+            onChange={handleNumberInputChange}
+            onBlur={handleNumberInputBlur}
+          />
+        </>
+      )
+    }
+
     if (parameterRule.type === 'boolean') {
       return (
         <Radio.Group
@@ -178,7 +203,17 @@ const ParameterItem: FC<ParameterItemProps> = ({
     if (parameterRule.type === 'string' && !parameterRule.options?.length) {
       return (
         <input
-          className='flex items-center px-3 w-[200px] h-8 appearance-none outline-none rounded-lg bg-gray-100 text-[13px] text-gra-900'
+          className={cn(isInWorkflow ? 'w-[200px]' : 'w-full', 'ml-4 flex items-center px-3 h-8 appearance-none outline-none rounded-lg bg-gray-100 text-[13px] text-gra-900')}
+          value={renderValue as string}
+          onChange={handleStringInputChange}
+        />
+      )
+    }
+
+    if (parameterRule.type === 'text') {
+      return (
+        <textarea
+          className='w-full h-20 ml-4 px-1 rounded-lg bg-gray-100 outline-none text-[12px] text-gray-900'
           value={renderValue as string}
           onChange={handleStringInputChange}
         />
@@ -189,7 +224,7 @@ const ParameterItem: FC<ParameterItemProps> = ({
       return (
         <SimpleSelect
           className='!py-0'
-          wrapperClassName='!w-[200px] !h-8'
+          wrapperClassName={cn(isInWorkflow ? '!w-[200px]' : 'w-full', 'ml-4 !h-8')}
           defaultValue={renderValue as string}
           onSelect={handleSelect}
           items={parameterRule.options.map(option => ({ value: option, name: option }))}
@@ -199,11 +234,12 @@ const ParameterItem: FC<ParameterItemProps> = ({
 
     if (parameterRule.type === 'tag') {
       return (
-        <div className='w-[200px]'>
+        <div className={cn(isInWorkflow ? 'w-[200px]' : 'w-full', 'ml-4')}>
           <TagInput
             items={renderValue as string[]}
             onChange={handleTagChange}
             customizedConfirmKey='Tab'
+            isInWorkflow={isInWorkflow}
           />
         </div>
       )
@@ -215,7 +251,7 @@ const ParameterItem: FC<ParameterItemProps> = ({
   return (
     <div className={`flex items-center justify-between ${className}`}>
       <div>
-        <div className='shrink-0 flex items-center w-[200px]'>
+        <div className={cn(isInWorkflow ? 'w-[140px]' : 'w-full', 'ml-4 shrink-0 flex items-center')}>
           <div
             className='mr-0.5 text-[13px] font-medium text-gray-700 truncate'
             title={parameterRule.label[language] || parameterRule.label.en_US}
@@ -225,18 +261,18 @@ const ParameterItem: FC<ParameterItemProps> = ({
           {
             parameterRule.help && (
               <Tooltip
-                selector={`model-parameter-rule-${parameterRule.name}`}
-                htmlContent={(
+                popupContent={(
                   <div className='w-[200px] whitespace-pre-wrap'>{parameterRule.help[language] || parameterRule.help.en_US}</div>
                 )}
-              >
-                <HelpCircle className='mr-1.5 w-3.5 h-3.5 text-gray-400' />
-              </Tooltip>
+                popupClassName='mr-1'
+                triggerClassName='mr-1 w-4 h-4 shrink-0'
+              />
             )
           }
           {
             !parameterRule.required && parameterRule.name !== 'stop' && (
               <Switch
+                className='mr-1'
                 defaultValue={!isNullOrUndefined(value)}
                 onChange={handleSwitch}
                 size='md'
@@ -246,7 +282,7 @@ const ParameterItem: FC<ParameterItemProps> = ({
         </div>
         {
           parameterRule.type === 'tag' && (
-            <div className='w-[200px] text-gray-400 text-xs font-normal'>
+            <div className={cn(!isInWorkflow && 'w-[200px]', 'text-gray-400 text-xs font-normal')}>
               {parameterRule?.tagPlaceholder?.[language]}
             </div>
           )

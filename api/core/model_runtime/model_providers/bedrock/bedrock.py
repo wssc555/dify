@@ -6,6 +6,7 @@ from core.model_runtime.model_providers.__base.model_provider import ModelProvid
 
 logger = logging.getLogger(__name__)
 
+
 class BedrockProvider(ModelProvider):
     def validate_provider_credentials(self, credentials: dict) -> None:
         """
@@ -18,13 +19,11 @@ class BedrockProvider(ModelProvider):
         try:
             model_instance = self.get_model_instance(ModelType.LLM)
 
-            # Use `gemini-pro` model for validate,
-            model_instance.validate_credentials(
-                model='amazon.titan-text-lite-v1',
-                credentials=credentials
-            )
+            # Use `amazon.titan-text-lite-v1` model by default for validating credentials
+            model_for_validation = credentials.get("model_for_validation", "amazon.titan-text-lite-v1")
+            model_instance.validate_credentials(model=model_for_validation, credentials=credentials)
         except CredentialsValidateFailedError as ex:
             raise ex
         except Exception as ex:
-            logger.exception(f'{self.get_provider_schema().provider} credentials validate failed')
+            logger.exception(f"{self.get_provider_schema().provider} credentials validate failed")
             raise ex

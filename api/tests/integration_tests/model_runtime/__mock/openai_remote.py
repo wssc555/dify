@@ -1,23 +1,22 @@
 from time import time
-from typing import List
 
-from openai.resources.models import Models
 from openai.types.model import Model
 
 
-class MockModelClass(object):
+class MockModelClass:
     """
-        mock class for openai.models.Models
+    mock class for openai.models.Models
     """
+
     def list(
         self,
         **kwargs,
-    ) -> List[Model]:
+    ) -> list[Model]:
         return [
             Model(
-                id='ft:gpt-3.5-turbo-0613:personal::8GYJLPDQ',
+                id="ft:gpt-3.5-turbo-0613:personal::8GYJLPDQ",
                 created=int(time()),
-                object='model',
-                owned_by='organization:org-123',
+                object="model",
+                owned_by="organization:org-123",
             )
         ]
